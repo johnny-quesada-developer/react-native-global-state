@@ -60,24 +60,31 @@ export type IHookResult<
   IsPersist extends boolean = IPersist extends null ? false : true,
   IActions extends IActionCollection<IState, IsPersist> | null = null
 > {
+
+  persistStoreAs: IPersist;
+
+  isPersistStore: boolean;
+
   /**
   * Returns a global hook that will share information across components by subscribing them to a specific store.
-  * @return [currentState, GlobalState.IHookResult<IState, IActions, IApi>]
+  * @return [currentState, GlobalState.IHookResult<IState, IActions, IApi>, initialStatePersistStorage | null, isUpdatedPersistStorage | null]
   */
   getHook: <IApi extends IActions extends ActionCollectionResult<IActions> ? ActionCollectionResult<IActions> : null>() => () => [
     IPersist extends string ? () => Promise<IState> : IState,
     IHookResult<IState, IsPersist, IActions, IApi>,
     IsPersist extends true ? IState : null,
+    IsPersist extends true ? boolean : null,
   ];
 
   /**
   * This is an access to the subscribers queue and to the current state of a specific store...
   * THIS IS NOT A REACT-HOOK, so you could use it everywhere example other hooks, and services.
-  * @return [currentState, GlobalState.IHookResult<IState, IsPersist, IActions, IApi>]
+  * @return [currentState, GlobalState.IHookResult<IState, IsPersist, IActions, IApi>, initialStatePersistStorage | null, isUpdatedPersistStorage | null]
   */
   getHookDecoupled: <IApi extends IActions extends ActionCollectionResult<IActions> ? ActionCollectionResult<IActions> : null>() => () => [
     () => IPersist extends string ? Promise<IState> : IState,
     IHookResult<IState, IsPersist, IActions, IApi>,
     IsPersist extends true ? IState : null,
+    IsPersist extends true ? boolean : null,
   ];
 }

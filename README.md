@@ -43,9 +43,34 @@ You could persist the state in the local-storage by just adding a name to the co
 const countStore = new GlobalStore(0, null, 'GLOBAL_COUNT');
 ```
 
+## Consuming Persisted Store
+```
+const [refresh, setter, state, isUpdated] = useCount();
+
+useEffect(() => {
+  refresh();
+}, []);
+
+```
+With the persistent storage, I preferred to change a little the format of the result... To let know developers what they are doing, because **asyncStorage** is ASYNC, so if I were automatically updating the state the first time that the hook is called, it could be ending into an INEXPLICABLE re-render of components...
+
+But even with the above, you could still automatically adding that behavior if you want, just by wrapping the hook:
+```
+export const usePersistedCount = () => {
+  const [refresh, setter, state, isUpdated] = useCount();
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return [state, setter, isUpdated];
+}
+```
+Don't worry about calling the refresh method every time you reuse the hook, that use case is already being handled by the GlobalState, and is not gonna perform any re-render... actually is just gonna read the asyncStorage the first time that you'll call the REFRESH method. Again this is strongly typed, so you'll don't have to guess what is happening.
+
 ## Creating hooks with reusable actions
 
-Let's say you want to have a STATE with a specific set of actions that you could reuse. With this library is pretty easy to accomplish. Let's create **plus** and **decrease** actions to our COUNT-store. **count.ts**:
+Let's say you want to have a STATE with a specific set of actions that you could be reused. With this library is pretty easy to accomplish. Let's create **plus** and **decrease** actions to our COUNT-store. **count.ts**:
 
 ```
 import * as IGlobalState from 'react-native-global-state/lib/GlobalStoreTypes';
@@ -60,7 +85,7 @@ const countStore = new GlobalStore(0, {
     // perfom whatever login you want
     setter(currentState - decrease);
   },
-}, 'GLOBAL_COUNT');
+});
 
 export const useCount = countStore.getHook();
 
@@ -95,7 +120,7 @@ export interface ICountActions {
 
 export const useCount = countStore.getHook<ICountActions>();
 ```
-The above step is necessary to get the correct typing of the parameters of your actions. The above step is necessary to get the correct typing of the parameters of your actions, otherwise, you'll get the name of the actions but the parameters would be all TYPE-ANY
+The above step is necessary to get the correct typing of the parameters of your actions, otherwise, you'll get the name of the actions but the parameters would be all TYPE-ANY
 
 ## Decoupled hook
 

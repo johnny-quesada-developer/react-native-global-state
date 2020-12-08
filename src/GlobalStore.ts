@@ -16,21 +16,60 @@ export class GlobalStore<
 > implements IGlobalState.IGlobalStateFactory<IState, IPersist, IsPersist, IActions> {
   public subscribers: IGlobalState.StateSetter<IState>[] = [];
 
-  public get isPersistStore() {
+  public get isPersistStore(): boolean {
     return !!this.persistStoreAs;
   }
 
-  constructor(protected state: IState, protected actions: IActions = null as IActions, protected persistStoreAs: IPersist = null as IPersist) {}
+  constructor(protected state: IState, protected actions: IActions = null as IActions, public persistStoreAs: IPersist = null as IPersist) {}
+
+  private get isStoredStateItemUpdated () {
+    return this.storedStateItem !== undefined;
+  }
 
   private storedStateItem: IState | undefined = undefined;
 
+  protected formatItemFromStore<T>(obj: T): any {
+    return Object.keys(obj).filter((key) => !key.includes('_type')).reduce((acumulator, key) => {
+      const type: string = obj[`${key}_type` as keyof T] as unknown as string;
+      const unformatedValue = obj[key as keyof T];
+      const isDateType = type === 'date';
+
+      if (isDateType) {
+        return {
+          ...acumulator,
+          [key]: new Date(unformatedValue as unknown as string),
+        };
+      }
+
+      return {
+        ...acumulator,
+        [key]: isPrimitive(unformatedValue) ? unformatedValue : this.formatItemFromStore(unformatedValue),
+      };
+    }, {} as any);
+  }
+
+  protected formatToStore<T>(obj: T): any {
+    return Object.keys(obj).reduce((acumulator, key) => {
+      const value = obj[key as keyof T];
+      const isDatetime = value instanceof Date;
+
+      return ({
+        ...acumulator,
+        [key]: isPrimitive(value) || isDatetime ? value : this.formatToStore(value),
+        [`${key}_type`]: isDatetime ? 'date' : typeof value,
+      });
+    }, {});
+  }
+
   protected async getAsyncStoreItem(): Promise<IState> {
-    if (this.storedStateItem !== undefined) return this.storedStateItem;
+    if (this.isStoredStateItemUpdated) return this.storedStateItem as IState;
 
     const item = await asyncStorage.getItem(this.persistStoreAs as string);
     if (item) {
       const value = JSON.parse(item) as IState;
-      this.state = value;
+      const newState: IState = isPrimitive(value) ? value : this.formatItemFromStore(value);
+
+      this.state = { ...this.state, ...newState };
     }
 
     this.setAsyncStoreItem();
@@ -41,7 +80,10 @@ export class GlobalStore<
     if (this.storedStateItem === this.state) return;
 
     this.storedStateItem = this.state;
-    await asyncStorage.setItem(this.persistStoreAs as string, JSON.stringify(this.state));
+
+    const valueToStore = isPrimitive(this.state) ? this.state : this.formatToStore(cloneDeep(this.state));
+
+    await asyncStorage.setItem(this.persistStoreAs as string, JSON.stringify(valueToStore));
     await this.globalSetter(this.state);
   }
 
@@ -49,24 +91,13 @@ export class GlobalStore<
 
   protected getStateCopy = (): IState => Object.freeze(cloneDeep(this.state));
 
-  /**
-   ** A- By default returns a simple setter
-   ** B- To specify the contract of the API:
-   * * creates an interface that extends GlobalState.ActionCollectionResult<GlobalState.IActionCollection<IState>>
-   *    --IActionCollectionResult should be compatible with the actions of the factory, otherwise would not be recognized
-   * * Finally, call .getHook<IApi>();
-   * @return
-   **  When using persist store, the first element is a promise that force the update of the current value around all hook subscriber, this happends just one time
-   *** [IPersist extends string ? () => Promise<IState> : IState,
-   *** GlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
-   *** IsPersist extends true ? IState : null]
-   */
   public getHook = <
     IApi extends IGlobalState.ActionCollectionResult<IActions> | null = IActions extends null ? null : IGlobalState.ActionCollectionResult<IActions>
   >() => (): [
     IPersist extends string ? () => Promise<IState> : IState,
     IGlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
     IsPersist extends true ? IState : null,
+    IsPersist extends true ? boolean : null,
   ] => {
     const [value, setter] = useState(this.state);
     const valueWrapper: (() => Promise<IState>) | IState = this.isPersistStore ? this.getPersistStoreValue() : value;
@@ -83,27 +114,17 @@ export class GlobalStore<
       valueWrapper as IPersist extends string ? () => Promise<IState> : IState,
       this.stateOrchestrator as IGlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
       this.state as IsPersist extends true ? IState : null,
+      this.isStoredStateItemUpdated as IsPersist extends true ? boolean : null,
     ];
   };
 
-  /**
-   ** A- By default returns a simple setter
-   ** B- To specify the contract of the API:
-   * * creates an interface that extends GlobalState.ActionCollectionResult<GlobalState.IActionCollection<IState>>
-   *    --IActionCollectionResult should be compatible with the actions of the factory, otherwise would not be recognized
-   * * Finally, call .getHook<IApi>();
-   * @return
-   **  When using persist store, the first element is a promise that force the update of the current value around all hook subscriber, this happends just one time
-   *** [()) => IPersist extends string ? Promise<IState> : IState,
-   *** GlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
-   *** IsPersist extends true ? IState : null]
-   */
   public getHookDecoupled = <
     IApi extends IGlobalState.ActionCollectionResult<IActions> | null = IActions extends null ? null : IGlobalState.ActionCollectionResult<IActions>
   >() => (): [
     () => IPersist extends string ? Promise<IState> : IState,
     IGlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
     IsPersist extends true ? IState : null,
+    IsPersist extends true ? boolean : null,
   ] => {
     const valueWrapper = this.isPersistStore ? this.getPersistStoreValue() : () => this.state;
 
@@ -111,6 +132,7 @@ export class GlobalStore<
       valueWrapper as () => IPersist extends string ? Promise<IState> : IState,
       this.stateOrchestrator as IGlobalState.IHookResult<IState, IsPersist, IActions, IApi>,
       this.state as IsPersist extends true ? IState : null,
+      this.isStoredStateItemUpdated as IsPersist extends true ? boolean : null,
     ];
   };
 
@@ -131,8 +153,8 @@ export class GlobalStore<
   }
 
   /**
-   **  [subscriber-update-callback, hook, newState]
-   */
+  **  [subscriber-update-callback, hook, newState]
+  */
   protected static batchedUpdates: [() => void, object, object][] = [];
 
   protected globalSetter = (setter: Partial<IState> | ((state: IState) => Partial<IState>), callback?: () => void) => {
