@@ -61,19 +61,28 @@ export class GlobalStore<
     }, {});
   }
 
+  protected getAsyncStoreItemPromise: Promise<IState> |  null = null;
+
   protected async getAsyncStoreItem(): Promise<IState> {
     if (this.isStoredStateItemUpdated) return this.storedStateItem as IState;
 
-    const item = await asyncStorage.getItem(this.persistStoreAs as string);
-    if (item) {
-      const value = JSON.parse(item) as IState;
-      const newState: IState = isPrimitive(value) ? value : this.formatItemFromStore(value);
+    if (this.getAsyncStoreItemPromise) return this.getAsyncStoreItemPromise;
+    
+    this.getAsyncStoreItemPromise = new Promise(async resolve => {
+      const item = await asyncStorage.getItem(this.persistStoreAs as string);
+      if (item) {
+        const value = JSON.parse(item) as IState;
+        const primitive = isPrimitive(value);
+        const newState: IState = primitive ? value : this.formatItemFromStore(value);
+  
+        this.state = primitive ? newState : { ...this.state, ...newState };
+      }
+  
+      this.setAsyncStoreItem();
+      resolve(this.state);
+    });
 
-      this.state = { ...this.state, ...newState };
-    }
-
-    this.setAsyncStoreItem();
-    return this.state;
+    return this.getAsyncStoreItemPromise;
   }
 
   protected async setAsyncStoreItem(): Promise<void> {
