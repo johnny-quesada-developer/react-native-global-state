@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "jsx": "react",
     "target": "ES2016",
     "module": "commonjs",
     "declaration": true,
@@ -34,6 +35,6 @@
     "allowUnusedLabels": false,
     "pretty": true
   },
-  "include": ["src"],
+  "include": ["src", "@test"],
   "exclude": ["node_modules"]
 }
